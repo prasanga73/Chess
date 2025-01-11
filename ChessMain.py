@@ -1,283 +1,346 @@
 """
-Main driver file.
-Handling user input.
-Displaying current GameStatus object.
+This is our maon driver. It will be responsible for handling user input
+and displaying the current GameState object.
 """
-import pygame as p
-import ChessEngine, ChessAI
 import sys
+import time
+
+sys.path.append(".")
+
+# from Chess import ChessEngine, SmartMoveFinder
+import ChessEngine
+import SmartMoveFinder
+
+from ChessEngine import *
+from SmartMoveFinder import *
+import pygame as p
+import os
 from multiprocessing import Process, Queue
 
+# our current path information:
+current_path = os.path.dirname(__file__)  # Where your .py file is located
+image_path = os.path.join(current_path, "images")  # The image folder path
+
+# 400 is another good option and it depends on how good the
+# images you have in terms of quality and resolution and 512 is a power of 2
 BOARD_WIDTH = BOARD_HEIGHT = 512
-MOVE_LOG_PANEL_WIDTH = 250
+MOVE_LOG_PANEL_WIDTH = 270
 MOVE_LOG_PANEL_HEIGHT = BOARD_HEIGHT
+# the chess board is 8x8 :)
 DIMENSION = 8
-SQUARE_SIZE = BOARD_HEIGHT // DIMENSION
+SQ_SIZE = BOARD_HEIGHT // DIMENSION
+# for animation later on
 MAX_FPS = 15
 IMAGES = {}
 
 
+"""
+As loading the images can be a costly process, we need to
+initialize a global dictonary for images just once in the main.
+Also, we put the loading images code in its own function, so we could
+adapt that code easily later on or add another piece sets !!
+"""
+
+
 def loadImages():
-    """
-    Initialize a global directory of images.
-    This will be called exactly once in the main.
-    """
-    pieces = ['wp', 'wR', 'wN', 'wB', 'wK', 'wQ', 'bp', 'bR', 'bN', 'bB', 'bK', 'bQ']
+    pieces = ["wp", "wN", "wB", "wR", "wQ", "wK", "bp", "bN", "bB", "bR", "bQ", "bK"]
     for piece in pieces:
-        IMAGES[piece] = p.transform.scale(p.image.load("images/" + piece + ".png"), (SQUARE_SIZE, SQUARE_SIZE))
+        img = os.path.join(image_path, piece + ".png")
+        IMAGES[piece] = p.transform.scale(p.image.load(img), (SQ_SIZE, SQ_SIZE))
 
 
-def main():
+""" The follwoing is the drive of our code which will handle user inputs and updating the graphics """
+
+def menu_screen():
     """
-    The main driver for our code.
-    This will handle user input and updating the graphics.
+    Displays the menu screen and lets the user select the game mode.
+    Returns True if Player vs Player is selected, False if Player vs AI is selected.
     """
-    p.init()
     screen = p.display.set_mode((BOARD_WIDTH + MOVE_LOG_PANEL_WIDTH, BOARD_HEIGHT))
+    p.display.set_caption("Chess - Select Mode")
     clock = p.time.Clock()
-    screen.fill(p.Color("white"))
-    game_state = ChessEngine.GameState()
-    valid_moves = game_state.getValidMoves()
-    move_made = False  # flag variable for when a move is made
-    animate = False  # flag variable for when we should animate a move
-    loadImages()  # do this only once before while loop
+    font = p.font.SysFont("Arial", 32)
     running = True
-    square_selected = ()  # no square is selected initially, this will keep track of the last click of the user (tuple(row,col))
-    player_clicks = []  # this will keep track of player clicks (two tuples)
-    game_over = False
-    ai_thinking = False
-    move_undone = False
-    move_finder_process = None
-    move_log_font = p.font.SysFont("Arial", 14, False, False)
-    player_one = True  # if a human is playing white, then this will be True, else False
-    player_two = False  # if a hyman is playing white, then this will be True, else False
-
     while running:
-        human_turn = (game_state.white_to_move and player_one) or (not game_state.white_to_move and player_two)
+        screen.fill(p.Color("white"))
+        
+        # Draw buttons
+        p.draw.rect(screen, p.Color("lightblue"), p.Rect(100, 200, 300, 50))  # PvP Button
+        p.draw.rect(screen, p.Color("lightgreen"), p.Rect(100, 300, 300, 50))  # PvAI Button
+        
+        # Draw button text
+        pvp_text = font.render("Player vs Player", True, p.Color("black"))
+        pvai_text = font.render("Player vs AI", True, p.Color("black"))
+        screen.blit(pvp_text, (120, 210))
+        screen.blit(pvai_text, (120, 310))
+        
+        p.display.flip()
+        clock.tick(30)
+        
         for e in p.event.get():
             if e.type == p.QUIT:
                 p.quit()
                 sys.exit()
-            # mouse handler
             elif e.type == p.MOUSEBUTTONDOWN:
-                if not game_over:
-                    location = p.mouse.get_pos()  # (x, y) location of the mouse
-                    col = location[0] // SQUARE_SIZE
-                    row = location[1] // SQUARE_SIZE
-                    if square_selected == (row, col) or col >= 8:  # user clicked the same square twice
-                        square_selected = ()  # deselect
-                        player_clicks = []  # clear clicks
-                    else:
-                        square_selected = (row, col)
-                        player_clicks.append(square_selected)  # append for both 1st and 2nd click
-                    if len(player_clicks) == 2 and human_turn:  # after 2nd click
-                        move = ChessEngine.Move(player_clicks[0], player_clicks[1], game_state.board)
-                        for i in range(len(valid_moves)):
-                            if move == valid_moves[i]:
-                                game_state.makeMove(valid_moves[i])
-                                move_made = True
-                                animate = True
-                                square_selected = ()  # reset user clicks
-                                player_clicks = []
-                        if not move_made:
-                            player_clicks = [square_selected]
+                x, y = e.pos
+                if 100 <= x <= 400 and 200 <= y <= 250:  # PvP Button Clicked
+                    return True
+                elif 100 <= x <= 400 and 300 <= y <= 350:  # PvAI Button Clicked
+                    return False
 
-            # key handler
+
+def main():
+    p.init()
+    # Display the menu screen and get user choice
+    playerTwo = menu_screen()  # Player vs Player if True, Player vs AI if False
+    playerOne = True  # Both players are human in PvP mode; one AI in PvAI mode
+    
+    p.display.set_caption("Chess")
+    screen = p.display.set_mode((BOARD_WIDTH + MOVE_LOG_PANEL_WIDTH, BOARD_HEIGHT))
+    clock = p.time.Clock()
+    screen.fill(p.Color("white"))
+    moveLogFont = p.font.SysFont("Arial", 20, False, False)
+    gs = GameState()
+    validMoves = gs.getValidMoves()
+    moveMade = False
+    animate = False
+    loadImages()
+    running = True
+    sqSelected = ()
+    playerClicks = []
+    gameOver = False
+    AIThinking = False
+    moveFinderProcess = None
+    moveUndone = False
+    
+    while running:
+        humanTurn = (gs.whiteToMove and playerOne) or (not gs.whiteToMove and playerTwo)
+        for e in p.event.get():
+            if e.type == p.QUIT:
+                running = False
+            elif e.type == p.MOUSEBUTTONDOWN:
+                if not gameOver:
+                    location = p.mouse.get_pos()
+                    col = location[0] // SQ_SIZE
+                    row = location[1] // SQ_SIZE
+                    if sqSelected == (row, col) or col >= 8:
+                        sqSelected = ()
+                        playerClicks = []
+                    else:
+                        sqSelected = (row, col)
+                        playerClicks.append(sqSelected)
+                    if len(playerClicks) == 2 and humanTurn:
+                        move = Move(playerClicks[0], playerClicks[1], gs.board)
+                        for i in range(len(validMoves)):
+                            if move == validMoves[i]:
+                                gs.makeMove(validMoves[i])
+                                moveMade = True
+                                animate = True
+                                sqSelected = ()
+                                playerClicks = []
+                        if not moveMade:
+                            playerClicks = [sqSelected]
+        # key handler
+
             elif e.type == p.KEYDOWN:
-                if e.key == p.K_z:  # undo when 'z' is pressed
-                    game_state.undoMove()
-                    move_made = True
+                if e.key == p.K_z: # undo when 'z' is pressed
+                    gs.undoMove()
+                    sqSelected = ()
+                    playerClicks = []
+                    moveMade = True
                     animate = False
-                    game_over = False
-                    if ai_thinking:
-                        move_finder_process.terminate()
-                        ai_thinking = False
-                    move_undone = True
+                    gameOver = False
+                    if AIThinking:
+                        moveFinderProcess.terminate()
+                        AIThinking = False
+                    moveUndone = True
                 if e.key == p.K_r:  # reset the game when 'r' is pressed
-                    game_state = ChessEngine.GameState()
-                    valid_moves = game_state.getValidMoves()
-                    square_selected = ()
-                    player_clicks = []
-                    move_made = False
+                    gs = GameState()
+                    validMoves = gs.getValidMoves()
+                    sqSelected = ()
+                    playerClicks = []
+                    moveMade = False
                     animate = False
-                    game_over = False
-                    if ai_thinking:
-                        move_finder_process.terminate()
-                        ai_thinking = False
-                    move_undone = True
+                    gameOver = False
+                    running = True
+                    if AIThinking:
+                        moveFinderProcess.terminate()
+                        AIThinking = False
+                    moveUndone = False
+
 
         # AI move finder
-        if not game_over and not human_turn and not move_undone:
-            if not ai_thinking:
-                ai_thinking = True
-                return_queue = Queue()  # used to pass data between threads
-                move_finder_process = Process(target=ChessAI.findBestMove, args=(game_state, valid_moves, return_queue))
-                move_finder_process.start()
 
-            if not move_finder_process.is_alive():
-                ai_move = return_queue.get()
-                if ai_move is None:
-                    ai_move = ChessAI.findRandomMove(valid_moves)
-                game_state.makeMove(ai_move)
-                move_made = True
+        if not gameOver and not humanTurn and not moveUndone:
+            if not AIThinking:
+                AIThinking = True
+                returnQueue = Queue()
+                moveFinderProcess = Process(
+                    target=SmartMoveFinder.findBestMoveMinMax,
+                    args=(gs, validMoves, returnQueue),
+                )
+                moveFinderProcess.start()
+            if not moveFinderProcess.is_alive():
+                AIMove = returnQueue.get()
+                if AIMove is None:
+                    AIMove = SmartMoveFinder.findRandomMoves(validMoves)
+                gs.makeMove(AIMove)
+                moveMade = True
                 animate = True
-                ai_thinking = False
+                AIThinking = False
 
-        if move_made:
+        if moveMade:
             if animate:
-                animateMove(game_state.move_log[-1], screen, game_state.board, clock)
-            valid_moves = game_state.getValidMoves()
-            move_made = False
+                animateMove(gs.moveLog[-1], screen, gs.board, clock)
+            validMoves = gs.getValidMoves()
+            moveMade = False
             animate = False
-            move_undone = False
-
-        drawGameState(screen, game_state, valid_moves, square_selected)
-
-        if not game_over:
-            drawMoveLog(screen, game_state, move_log_font)
-
-        if game_state.checkmate:
-            game_over = True
-            if game_state.white_to_move:
-                drawEndGameText(screen, "Black wins by checkmate")
-            else:
-                drawEndGameText(screen, "White wins by checkmate")
-
-        elif game_state.stalemate:
-            game_over = True
-            drawEndGameText(screen, "Stalemate")
-
+            moveUndone = False
+            
+        drawGameState(screen, gs, validMoves, sqSelected, moveLogFont)
+        if gs.checkmate or gs.stalemate:
+            gameOver = True
+            text = (
+                "Stalemate"
+                if gs.stalemate
+                else "Black wins by checkmate"
+                if gs.whiteToMove
+                else "White wins by checkmate"
+            )
+            drawEndGameText(screen, text)
         clock.tick(MAX_FPS)
         p.display.flip()
 
 
-def drawGameState(screen, game_state, valid_moves, square_selected):
-    """
-    Responsible for all the graphics within current game state.
-    """
-    drawBoard(screen)  # draw squares on the board
-    highlightSquares(screen, game_state, valid_moves, square_selected)
-    drawPieces(screen, game_state.board)  # draw pieces on top of those squares
+def drawGameState(screen, gs, validMoves, sqSelected, moveLogFont):
+    drawBoard(screen)  # draw the squares on the board right :)
+    highlightSquares(screen, gs, validMoves, sqSelected)
+    drawPieces(screen, gs.board)  # just draw the pieces on the top of the board
+    drawMoveLog(screen, gs, moveLogFont)
 
 
 def drawBoard(screen):
-    """
-    Draw the squares on the board.
-    The top left square is always light.
-    """
     global colors
     colors = [p.Color("white"), p.Color("gray")]
-    for row in range(DIMENSION):
-        for column in range(DIMENSION):
-            color = colors[((row + column) % 2)]
-            p.draw.rect(screen, color, p.Rect(column * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+    for r in range(DIMENSION):
+        for c in range(DIMENSION):
+            color = colors[(r + c) % 2]
+            p.draw.rect(
+                screen, color, p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE)
+            )
 
 
-def highlightSquares(screen, game_state, valid_moves, square_selected):
-    """
-    Highlight square selected and moves for piece selected.
-    """
-    if (len(game_state.move_log)) > 0:
-        last_move = game_state.move_log[-1]
-        s = p.Surface((SQUARE_SIZE, SQUARE_SIZE))
-        s.set_alpha(100)
-        s.fill(p.Color('green'))
-        screen.blit(s, (last_move.end_col * SQUARE_SIZE, last_move.end_row * SQUARE_SIZE))
-    if square_selected != ():
-        row, col = square_selected
-        if game_state.board[row][col][0] == (
-                'w' if game_state.white_to_move else 'b'):  # square_selected is a piece that can be moved
-            # highlight selected square
-            s = p.Surface((SQUARE_SIZE, SQUARE_SIZE))
-            s.set_alpha(100)  # transparency value 0 -> transparent, 255 -> opaque
-            s.fill(p.Color('blue'))
-            screen.blit(s, (col * SQUARE_SIZE, row * SQUARE_SIZE))
-            # highlight moves from that square
-            s.fill(p.Color('yellow'))
-            for move in valid_moves:
-                if move.start_row == row and move.start_col == col:
-                    screen.blit(s, (move.end_col * SQUARE_SIZE, move.end_row * SQUARE_SIZE))
+""" highlight the square selected and valid moves for the piece selected """
+
+
+def highlightSquares(screen, gs, validMoves, sqSelected):
+    if sqSelected != ():
+        r, c = sqSelected
+        # make sure that each user can use highlighting ability for its own pieces
+        if gs.board[r][c][0] == ("w" if gs.whiteToMove else "b"):
+            # 1. highlight the selected square
+            s = p.Surface((SQ_SIZE, SQ_SIZE))
+            s.set_alpha(
+                100
+            )  # zero value is full transparentand 255 means no transperency
+            s.fill(p.Color("blue"))
+            screen.blit(s, (c * SQ_SIZE, r * SQ_SIZE))
+            # 2. highlight moves from that selected square
+            s.fill(p.Color("yellow"))
+            for move in validMoves:
+                if (
+                    move.startRow == r and move.startCol == c
+                ):  # then those are the valid moves for that particular piece
+                    screen.blit(s, (move.endCol * SQ_SIZE, move.endRow * SQ_SIZE))
 
 
 def drawPieces(screen, board):
-    """
-    Draw the pieces on the board using the current game_state.board
-    """
-    for row in range(DIMENSION):
-        for column in range(DIMENSION):
-            piece = board[row][column]
-            if piece != "--":
-                screen.blit(IMAGES[piece], p.Rect(column * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+    for r in range(DIMENSION):
+        for c in range(DIMENSION):
+            piece = board[r][c]
+            if piece != "--":  # it's really a piece and not an empty square
+                screen.blit(
+                    IMAGES[piece], p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE)
+                )
 
 
-def drawMoveLog(screen, game_state, font):
-    """
-    Draws the move log.
-
-    """
-    move_log_rect = p.Rect(BOARD_WIDTH, 0, MOVE_LOG_PANEL_WIDTH, MOVE_LOG_PANEL_HEIGHT)
-    p.draw.rect(screen, p.Color('black'), move_log_rect)
-    move_log = game_state.move_log
-    move_texts = []
-    for i in range(0, len(move_log), 2):
-        move_string = str(i // 2 + 1) + '. ' + str(move_log[i]) + " "
-        if i + 1 < len(move_log):
-            move_string += str(move_log[i + 1]) + "  "
-        move_texts.append(move_string)
-
-    moves_per_row = 3
-    padding = 5
-    line_spacing = 2
-    text_y = padding
-    for i in range(0, len(move_texts), moves_per_row):
-        text = ""
-        for j in range(moves_per_row):
-            if i + j < len(move_texts):
-                text += move_texts[i + j]
-
-        text_object = font.render(text, True, p.Color('white'))
-        text_location = move_log_rect.move(padding, text_y)
-        screen.blit(text_object, text_location)
-        text_y += text_object.get_height() + line_spacing
-
-
-def drawEndGameText(screen, text):
-    font = p.font.SysFont("Helvetica", 32, True, False)
-    text_object = font.render(text, False, p.Color("gray"))
-    text_location = p.Rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT).move(BOARD_WIDTH / 2 - text_object.get_width() / 2,
-                                                                 BOARD_HEIGHT / 2 - text_object.get_height() / 2)
-    screen.blit(text_object, text_location)
-    text_object = font.render(text, False, p.Color('black'))
-    screen.blit(text_object, text_location.move(2, 2))
+""" the animation function """
 
 
 def animateMove(move, screen, board, clock):
-    """
-    Animating a move
-    """
     global colors
-    d_row = move.end_row - move.start_row
-    d_col = move.end_col - move.start_col
-    frames_per_square = 5  # frames to move one square
-    frame_count = (abs(d_row) + abs(d_col)) * frames_per_square
-    for frame in range(frame_count + 1):
-        row, col = (move.start_row + d_row * frame / frame_count, move.start_col + d_col * frame / frame_count)
+    dR = move.endRow - move.startRow
+    dC = move.endCol - move.startCol
+    framesPerSquare = 10  # frames to move one square
+    frameCount = (abs(dR) + abs(dC)) * framesPerSquare
+    for frame in range(frameCount + 1):
+        r, c = (
+            move.startRow + dR * frame / frameCount,
+            move.startCol + dC * frame / frameCount,
+        )
         drawBoard(screen)
         drawPieces(screen, board)
-        # erase the piece moved from its ending square
-        color = colors[(move.end_row + move.end_col) % 2]
-        end_square = p.Rect(move.end_col * SQUARE_SIZE, move.end_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
-        p.draw.rect(screen, color, end_square)
-        # draw captured piece onto rectangle
-        if move.piece_captured != '--':
-            if move.is_enpassant_move:
-                enpassant_row = move.end_row + 1 if move.piece_captured[0] == 'b' else move.end_row - 1
-                end_square = p.Rect(move.end_col * SQUARE_SIZE, enpassant_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
-            screen.blit(IMAGES[move.piece_captured], end_square)
-        # draw moving piece
-        screen.blit(IMAGES[move.piece_moved], p.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+        # erase the move from its ending square
+        color = colors[(move.endRow + move.endCol) % 2]
+        endSquare = p.Rect(
+            move.endCol * SQ_SIZE, move.endRow * SQ_SIZE, SQ_SIZE, SQ_SIZE
+        )
+        p.draw.rect(screen, color, endSquare)
+        # draw the captured piece back onto the top of the rect
+        if move.pieceCaptured != "--":
+            if move.isEnpassantMove:
+                enpassantRow = (
+                    (move.endRow + 1)
+                    if move.pieceCaptured[0] == "b"
+                    else (move.endRow - 1)
+                )
+                endSquare = p.Rect(
+                    move.endCol * SQ_SIZE, enpassantRow * SQ_SIZE, SQ_SIZE, SQ_SIZE
+                )
+            screen.blit(IMAGES[move.pieceCaptured], endSquare)
+        # draw the moving piece
+        screen.blit(
+            IMAGES[move.pieceMoved], p.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE)
+        )
         p.display.flip()
-        clock.tick(60)
+        clock.tick(120)
+
+
+def drawEndGameText(screen, text):
+    font = p.font.SysFont("Helvitca", 32, True, False)
+    textObject = font.render(text, 0, p.Color("Gray"))
+    textLocation = p.Rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT).move(
+        BOARD_WIDTH / 2 - textObject.get_width() / 2,
+        BOARD_HEIGHT / 2 - textObject.get_height() / 2,
+    )
+    screen.blit(textObject, textLocation)
+    textObject = font.render(text, 0, p.Color("Black"))
+    screen.blit(textObject, textLocation.move(2, 2))
+
+
+def drawMoveLog(screen, gs, font):
+    moveLogRect = p.Rect(BOARD_WIDTH, 0, MOVE_LOG_PANEL_WIDTH, MOVE_LOG_PANEL_HEIGHT)
+    p.draw.rect(screen, p.Color("black"), moveLogRect)
+    moveLog = gs.moveLog
+    moveTexts = []
+    for i in range(0, len(moveLog), 2):
+        moveString = str(i // 2 + 1) + ". " + str(moveLog[i]) + " "
+        if i + 1 < len(moveLog):
+            moveString += str(moveLog[i + 1])
+        moveTexts.append(moveString)
+    padding = 5
+    textY = padding
+    lineSpacing = 5
+    movesPerRow = 3
+    for i in range(0, len(moveTexts), movesPerRow):
+        text = ""
+        for j in range(movesPerRow):
+            if i + j < len(moveTexts):
+                text += moveTexts[i + j] + "  "
+        textObject = font.render(text, True, p.Color("white"))
+        textLocation = moveLogRect.move(padding, textY)
+        screen.blit(textObject, textLocation)
+        textY += textObject.get_height() + lineSpacing
 
 
 if __name__ == "__main__":
