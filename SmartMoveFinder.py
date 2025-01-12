@@ -197,13 +197,15 @@ def findMoveNegaMaxAlphaBeta(gs, validMoves, depth, alpha, beta, turnMultiplier)
 
     # Separate capture moves and non-capture moves
     for move in validMoves:
-        if move.pieceCaptured:
+        gs.makeMove(move)
+        if move.pieceCaptured!="--":
             capture_moves.append(move)
         else:
             non_capture_moves.append(move)
+        gs.undoMove()
 
     # Sort capture moves first by piece value, then by historical score
-    capture_moves.sort(key=lambda move: piece_value(move.pieceCaptured), reverse=True)
+    # capture_moves.sort(key=lambda move: piece_value(move.pieceCaptured), reverse=True)
     
     # Combine capture moves and non-capture moves
     ordered_moves = capture_moves + non_capture_moves
@@ -213,7 +215,7 @@ def findMoveNegaMaxAlphaBeta(gs, validMoves, depth, alpha, beta, turnMultiplier)
     maxScore = -CHECKMATE
     
     # Explore up to the first 10 moves (based on ordered list)
-    for move in ordered_moves[:10]:
+    for move in ordered_moves[:20]:
         gs.makeMove(move)
         nextMoves = gs.getValidMoves()
         
