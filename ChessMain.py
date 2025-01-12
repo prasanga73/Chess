@@ -88,7 +88,7 @@ def menu_screen():
                 elif 100 <= x <= 400 and 300 <= y <= 350:  # PvAI Button Clicked
                     return False
 
-
+current_move = []
 def main():
     p.init()
     # Display the menu screen and get user choice
@@ -175,15 +175,17 @@ def main():
             if not AIThinking:
                 AIThinking = True
                 returnQueue = Queue()
+                current_move.append(str(gs.moveLog[-1]))
                 moveFinderProcess = Process(
                     target=SmartMoveFinder.findBestMoveMinMax,
-                    args=(gs, validMoves, returnQueue),
+                    args=(gs, validMoves, returnQueue,current_move),
                 )
                 moveFinderProcess.start()
             if not moveFinderProcess.is_alive():
                 AIMove = returnQueue.get()
                 if AIMove is None:
                     AIMove = SmartMoveFinder.findRandomMoves(validMoves)
+                current_move.append(str(AIMove))
                 gs.makeMove(AIMove)
                 moveMade = True
                 animate = True

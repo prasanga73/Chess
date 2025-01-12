@@ -59,6 +59,7 @@ class GameState:
     Note: this won't work now quite well for castling, pawn promotion and en-passant
     """
 
+
     def makeMove(self, move):
         self.board[move.startRow][move.startCol] = "--"
         self.board[move.endRow][move.endCol] = move.pieceMoved
@@ -572,6 +573,7 @@ class Move:
         return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(
             self.endRow, self.endCol
         )
+
 
     def getRankFile(self, r, c):
         return self.colsToFiles[c] + self.rowsToRanks[r]
