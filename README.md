@@ -28,8 +28,6 @@ feel free to contribute :grinning:
 * Press `z` to undo a move.
 * Press `r` to reset the game.
 
-#### Notes: 
-* For now, the game runs with PvP mode enabled.
 
 ## Further development done
 1. Added book moves using csv file for reducing engine overhead at initial phase of game
